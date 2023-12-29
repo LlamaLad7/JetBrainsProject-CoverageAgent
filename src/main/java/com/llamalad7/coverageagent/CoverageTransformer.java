@@ -18,8 +18,7 @@ class CoverageTransformer implements ClassFileTransformer {
     private static final Set<String> EXCLUDED_METHODS = Set.of("<init>", "<clinit>");
 
     // These aren't legal identifiers in Java or Kotlin, but the JVM is fine with them.
-    // This ensures they won't overlap with any existing members, and as a bonus, they seem to be invisible to
-    // reflection.
+    // This ensures they won't overlap with any existing members.
     private static final String NOTIFIED_FIELD = "\\coverageAgent$notified";
     private static final String NOTIFY_METHOD = "\\coverageAgent$notify";
 

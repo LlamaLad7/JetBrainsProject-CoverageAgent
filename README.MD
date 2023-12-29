@@ -52,8 +52,7 @@ public class DemoClass {
 }
 ```
 
-(The actual names of the generated members are not legal Java/Kotlin identifiers to ensure there will be no conflicts,
-and they are invisible to reflection.)
+(The actual names of the generated members are not legal Java/Kotlin identifiers to ensure there will be no conflicts.)
 
 The use of an atomic boolean for each class means the overhead is very low since central synchronization and a `HashSet`
 lookup is only needed once per class.
