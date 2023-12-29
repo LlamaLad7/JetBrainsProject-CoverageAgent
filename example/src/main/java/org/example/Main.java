@@ -6,6 +6,8 @@ public class Main {
     public static void main(String[] args) {
         var gson = new GsonBuilder().setPrettyPrinting().create();
         var mark = new Person("Mark", 43);
-        assert mark.equals(gson.fromJson(gson.toJson(mark), Person.class));
+        if (mark.equals(gson.fromJson(gson.toJson(mark), Person.class))) {
+            System.out.println("Hooray!");
+        }
     }
 }
