@@ -6,23 +6,26 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CoverageAgentAPI {
     private static final String FILE = "executedClasses.txt";
     private static final Set<String> executedClasses = new LinkedHashSet<>();
-    private static int lastSize = 0;
+    private static final AtomicBoolean needsToDump = new AtomicBoolean(false);
 
     @SuppressWarnings("unused")
     @ApiStatus.Internal
-    public static void markExecutedClass(Class<?> clazz) {
-        synchronized (executedClasses) {
-            // For now, we ignore the classloader, but if we wanted to use it later we could.
-            executedClasses.add(clazz.getName());
+    public static synchronized void markExecutedClass(Class<?> clazz) {
+        // For now, we ignore the classloader, but if we wanted to use it later we could.
+        if (executedClasses.add(clazz.getName())) {
+            needsToDump.set(true);
         }
     }
 
     static {
+        // Save the file on JVM shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(CoverageAgentAPI::saveFile));
+        // Save the file every 5 seconds
         new Timer(true).scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
@@ -32,15 +35,14 @@ public class CoverageAgentAPI {
     }
 
     private static void saveFile() {
-        List<String> currentClasses;
-        synchronized (executedClasses) {
-            currentClasses = executedClasses.stream().toList();
-        }
-        var currentSize = currentClasses.size();
-        if (currentSize != lastSize) {
-            lastSize = currentSize;
+        if (needsToDump.getAndSet(false)) {
+            List<String> currentClasses;
+            // Only block for as long as needed, certainly not for the actual IO
+            synchronized (CoverageAgentAPI.class) {
+                currentClasses = executedClasses.stream().toList();
+            }
             try {
-                Files.write(Path.of(FILE), executedClasses);
+                Files.write(Path.of(FILE), currentClasses);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to dump classes list: ", e);
             }
