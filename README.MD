@@ -8,6 +8,9 @@ This is a small Java agent which dumps a list of all classes within a specified 
 java -javaagent:"<path to agent>"=package/to/monitor/ ...
 ```
 
+See also the [example](https://github.com/LlamaLad7/JetBrainsProject-CoverageAgent/tree/main/example), notably its 
+buildscript.
+
 The agent will keep track of all executed classes within the specified package, and will dump a list of them to
 `executedClasses.txt`, both every 5 seconds and on JVM shutdown.
 
