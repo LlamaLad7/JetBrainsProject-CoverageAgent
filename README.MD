@@ -8,7 +8,7 @@ This is a small Java agent which dumps a list of all classes within a specified 
 java -javaagent:"<path to agent>"=package/to/monitor/ ...
 ```
 
-See also the [example](https://github.com/LlamaLad7/JetBrainsProject-CoverageAgent/tree/main/example), notably its 
+See also the [example](https://github.com/LlamaLad7/JetBrainsProject-CoverageAgent/tree/main/example), notably its
 buildscript.
 
 The agent will keep track of all executed classes within the specified package, and will dump a list of them to
@@ -21,8 +21,47 @@ coverage. You can give other methods the same behaviour by annotating them with:
 @DoNotTrack
 ```
 
+## Implementation
+
+Consider this class:
+
+```java
+public class DemoClass {
+    public static void main(String[] args) {
+        System.out.println("Hi!");
+    }
+}
+```
+
+The agent will transform the class so it becomes equivalent to:
+
+```java
+public class DemoClass {
+    public static final AtomicBoolean coverageAgent$notified = new AtomicBoolean();
+
+    public static void main(String[] args) {
+        coverageAgent$notify();
+        System.out.println("Hi!");
+    }
+
+    public static void coverageAgent$notify() {
+        if (!coverageAgent$notified.getAndSet(true)) {
+            CoverageAgentAPI.markExecutedClass(DemoClass.class);
+        }
+    }
+}
+```
+
+(The actual names of the generated members are not legal Java/Kotlin identifiers to ensure there will be no conflicts,
+and they are invisible to reflection.)
+
+The use of an atomic boolean for each class means the overhead is very low since central synchronization and a `HashSet`
+lookup is only needed once per class.
+
+We ignore interfaces which were compiled with Java <8, since their methods cannot have bodies.
+
 ## Considerations for the future
 
 - Ideally the agent would be configurable via a more robust config file which could be passed in
-- A `HashSet` addition on each method call is fairly expensive, so ideally this would be guarded by a volatile boolean
-  kept in each class
+- Perhaps a `volatile` field would be cheaper than an `AtomicBoolean`, though that wouldn't work for interfaces whose
+  fields must be final
