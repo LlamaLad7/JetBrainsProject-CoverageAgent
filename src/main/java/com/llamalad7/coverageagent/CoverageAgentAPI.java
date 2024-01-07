@@ -1,7 +1,5 @@
 package com.llamalad7.coverageagent;
 
-import org.jetbrains.annotations.ApiStatus;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,9 +11,7 @@ public class CoverageAgentAPI {
     private static final Set<String> executedClasses = new LinkedHashSet<>();
     private static final AtomicBoolean needsToDump = new AtomicBoolean(false);
 
-    @SuppressWarnings("unused")
-    @ApiStatus.Internal
-    public static synchronized void markExecutedClass(Class<?> clazz) {
+    static synchronized void markExecutedClass(Class<?> clazz) {
         // For now, we ignore the classloader, but if we wanted to use it later we could.
         if (executedClasses.add(clazz.getName())) {
             needsToDump.set(true);

@@ -1,28 +1,24 @@
 package com.llamalad7.coverageagent;
 
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
+import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 
 import java.lang.annotation.Annotation;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
+import java.lang.invoke.CallSite;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.security.ProtectionDomain;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 class CoverageTransformer implements ClassFileTransformer {
     // We assume these methods are not useful regarding coverage.
     private static final Set<String> EXCLUDED_METHODS = Set.of("<init>", "<clinit>");
 
-    // These aren't legal identifiers in Java or Kotlin, but the JVM is fine with them.
-    // This ensures they won't overlap with any existing members.
-    private static final String NOTIFIED_FIELD = "\\coverageAgent$notified";
+    // This isn't a legal identifier in Java or Kotlin, but the JVM is fine with it.
+    // This ensures it won't overlap with any existing members.
     private static final String NOTIFY_METHOD = "\\coverageAgent$notify";
-
-    private static final Type ATOMIC_BOOLEAN = Type.getType(AtomicBoolean.class);
 
     @Override
     public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
@@ -38,17 +34,15 @@ class CoverageTransformer implements ClassFileTransformer {
     }
 
     private void transformClass(ClassNode clazz) {
+        if (clazz.version < Opcodes.V1_7) {
+            clazz.version = Opcodes.V1_7;
+        }
         var isInterface = (clazz.access & Opcodes.ACC_INTERFACE) != 0;
         if (isInterface && clazz.version < Opcodes.V1_8) {
             // Interface methods cannot have bodies before Java 8, so skip this class.
             return;
         }
-        var clinitFound = false;
         for (var method : clazz.methods) {
-            if (method.name.equals("<clinit>")) {
-                initializeNotified(clazz, method);
-                clinitFound = true;
-            }
             if (EXCLUDED_METHODS.contains(method.name) || hasInvisibleAnnotation(method, DoNotTrack.class)) {
                 // Don't want to count this method.
                 continue;
@@ -69,49 +63,7 @@ class CoverageTransformer implements ClassFileTransformer {
                     )
             );
         }
-        if (!clinitFound) {
-            // We have to create it ourselves.
-            var clinit = new MethodNode(
-                    Opcodes.ACC_STATIC,
-                    "<clinit>",
-                    "()V",
-                    null,
-                    null
-            );
-            clinit.instructions.add(new InsnNode(Opcodes.RETURN));
-            initializeNotified(clazz, clinit);
-            clazz.methods.add(clinit);
-        }
         makeNotifyMethod(clazz);
-    }
-
-    private static void initializeNotified(ClassNode clazz, MethodNode clinit) {
-        // This will store whether we have already notified the agent of our class's execution.
-        clazz.fields.add(new FieldNode(
-                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
-                NOTIFIED_FIELD,
-                ATOMIC_BOOLEAN.getDescriptor(),
-                null,
-                null
-        ));
-        // Equivalent to `coverageAgent$notified = new AtomicBoolean();`
-        clinit.instructions.insert(new InsnList() {{
-            add(new TypeInsnNode(Opcodes.NEW, ATOMIC_BOOLEAN.getInternalName()));
-            add(new InsnNode(Opcodes.DUP));
-            add(new MethodInsnNode(
-                    Opcodes.INVOKESPECIAL,
-                    ATOMIC_BOOLEAN.getInternalName(),
-                    "<init>",
-                    "()V",
-                    false
-            ));
-            add(new FieldInsnNode(
-                    Opcodes.PUTSTATIC,
-                    clazz.name,
-                    NOTIFIED_FIELD,
-                    ATOMIC_BOOLEAN.getDescriptor()
-            ));
-        }});
     }
 
     private static void makeNotifyMethod(ClassNode clazz) {
@@ -124,36 +76,24 @@ class CoverageTransformer implements ClassFileTransformer {
                 null
         );
         var selfType = Type.getObjectType(clazz.name);
-        // Equivalent to `if (!coverageAgent$notified.getAndSet(true)) CoverageAgentAPI.markExecutedClass(OurClass.class);`
         method.instructions = new InsnList() {{
-            var after = new LabelNode();
-            add(new FieldInsnNode(
-                    Opcodes.GETSTATIC,
-                    clazz.name,
-                    NOTIFIED_FIELD,
-                    ATOMIC_BOOLEAN.getDescriptor()
-            ));
-            add(new InsnNode(Opcodes.ICONST_1));
-            add(new MethodInsnNode(
-                    Opcodes.INVOKEVIRTUAL,
-                    ATOMIC_BOOLEAN.getInternalName(),
-                    "getAndSet",
-                    "(Z)Z",
-                    false
-            ));
-            add(new JumpInsnNode(Opcodes.IFNE, after));
             add(new LdcInsnNode(selfType));
-            add(new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(CoverageAgentAPI.class),
-                    "markExecutedClass",
-                    "(Ljava/lang/Class;)V",
-                    false
+            add(new InvokeDynamicInsnNode(
+                    "notify",
+                    Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(Class.class)),
+                    new Handle(
+                            Opcodes.H_INVOKESTATIC,
+                            Type.getInternalName(IndySupport.class),
+                            "bootstrap",
+                            Type.getMethodDescriptor(
+                                    Type.getType(CallSite.class),
+                                    Type.getType(MethodHandles.Lookup.class),
+                                    Type.getType(String.class),
+                                    Type.getType(MethodType.class)
+                            ),
+                            false
+                    )
             ));
-            add(after);
-            // Unfortunately we need to add this frame ourselves, since COMPUTE_FRAMES would cause a lot of random
-            // and potentially dangerous classloading.
-            add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
             add(new InsnNode(Opcodes.RETURN));
         }};
         clazz.methods.add(method);
