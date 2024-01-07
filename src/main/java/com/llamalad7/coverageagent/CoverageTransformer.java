@@ -35,6 +35,7 @@ class CoverageTransformer implements ClassFileTransformer {
 
     private void transformClass(ClassNode clazz) {
         if (clazz.version < Opcodes.V1_7) {
+            // We need INDY!
             clazz.version = Opcodes.V1_7;
         }
         var isInterface = (clazz.access & Opcodes.ACC_INTERFACE) != 0;

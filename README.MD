@@ -2,6 +2,8 @@
 
 This is a small Java agent which dumps a list of all classes within a specified package in which code is executed.
 
+### Note: This is a new implementation using `INVOKEDYNAMIC`, my original one can be found [here](https://github.com/LlamaLad7/JetBrainsProject-CoverageAgent/tree/original-implementation).
+
 ## Usage
 
 ```bash
@@ -37,31 +39,29 @@ The agent will transform the class so it becomes equivalent to:
 
 ```java
 public class DemoClass {
-    public static final AtomicBoolean coverageAgent$notified = new AtomicBoolean();
-
     public static void main(String[] args) {
         coverageAgent$notify();
         System.out.println("Hi!");
     }
 
     public static void coverageAgent$notify() {
-        if (!coverageAgent$notified.getAndSet(true)) {
-            CoverageAgentAPI.markExecutedClass(DemoClass.class);
-        }
+        IndySupport.<invokedynamic>notify(DemoClass.class);
     }
 }
 ```
 
-(The actual names of the generated members are not legal Java/Kotlin identifiers to ensure there will be no conflicts.)
+(The actual name of the generated method is not a legal Java/Kotlin identifier to ensure there will be no conflicts.)
 
-The use of an atomic boolean for each class means the overhead is very low since central synchronization and a `HashSet`
-lookup is only needed once per class.
+The invokedynamic call will notify the agent of the class's execution, and then rebind itself to do nothing on 
+subsequent executions. The JVM should be able to see through this and optimize the call out entirely in hot code.
+
+The use of a generated method means there is only a single INDY call-site per class, so after any of the methods 
+trigger it, it will become inactive.
 
 We ignore interfaces which were compiled with Java <8, since their methods cannot have bodies.
 
 ## Considerations for the future
 
 - Ideally the agent would be configurable via a more robust config file which could be passed in
-- Perhaps a `volatile` field would be cheaper than an `AtomicBoolean`, though that wouldn't work for interfaces whose
-  fields must be final
-- In fact, a better idea might be to use an `INVOKEDYNAMIC`. We could use a `MutableCallSite` and link it to a dummy method after the first execution. Hopefully this would be more transparent to the JVM and the JIT would be able to get rid of it entirely.
+- Maybe we should have some kind of system to ignore methods called from `<init>` or `<clinit>`, not just those methods
+  themselves?
