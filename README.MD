@@ -64,4 +64,4 @@ We ignore interfaces which were compiled with Java <8, since their methods canno
 - Ideally the agent would be configurable via a more robust config file which could be passed in
 - Perhaps a `volatile` field would be cheaper than an `AtomicBoolean`, though that wouldn't work for interfaces whose
   fields must be final
-- In fact, a better idea might be to use an `INVOKEDYNAMIC`. We could use a `MutableCallSite` and link it to a dummy method after the first execution. Hopefully this would be more transparent to the JVM and the JIT be able to get rid of it entirely.
+- In fact, a better idea might be to use an `INVOKEDYNAMIC`. We could use a `MutableCallSite` and link it to a dummy method after the first execution. Hopefully this would be more transparent to the JVM and the JIT would be able to get rid of it entirely.
